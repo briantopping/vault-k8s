@@ -127,16 +127,7 @@ func (a *Agent) newConfig(init bool) ([]byte, error) {
 			TLSServerName: a.Vault.TLSServerName,
 		},
 		AutoAuth: &AutoAuth{
-			Method: &Method{
-				Type:      "gcp",
-				Namespace: a.Vault.Namespace,
-				MountPath: a.Vault.AuthPath,
-				Config: map[string]interface{}{
-					"role":            a.Vault.Role,
-					"type":            "iam",
-					"service_account": a.Vault.Email,
-				},
-			},
+			Method: a.method(),
 			Sinks: []*Sink{
 				{
 					Type: "file",
@@ -163,6 +154,30 @@ func (a *Agent) newConfig(init bool) ([]byte, error) {
 	}
 
 	return config.render()
+}
+
+func (a *Agent) method() *Method {
+	if a.Vault.Email == "" {
+		return &Method{
+			Type:      "kubernetes",
+			Namespace: a.Vault.Namespace,
+			MountPath: a.Vault.AuthPath,
+			Config: map[string]interface{}{
+				"role": a.Vault.Role,
+			},
+		}
+	} else {
+		return &Method{
+			Type:      "gcp",
+			Namespace: a.Vault.Namespace,
+			MountPath: a.Vault.AuthPath,
+			Config: map[string]interface{}{
+				"role":            a.Vault.Role,
+				"type":            "iam",
+				"service_account": a.Vault.Email,
+			},
+		}
+	}
 }
 
 func (c *Config) render() ([]byte, error) {
