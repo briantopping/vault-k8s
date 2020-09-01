@@ -165,6 +165,9 @@ const (
 	// method.
 	AnnotationVaultRole = "vault.hashicorp.com/role"
 
+	// AnnotationVaultRole specifies the email address of the GSA
+	AnnotationVaultEmail = "vault.hashicorp.com/google-sa-email"
+
 	// AnnotationVaultAuthPath specifies the mount path to be used for the Kubernetes auto-auth
 	// method.
 	AnnotationVaultAuthPath = "vault.hashicorp.com/auth-path"

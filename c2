@@ -1,0 +1,33 @@
+{
+  "auto_auth": {
+    "method": {
+      "type": "gcp",
+      "mount_path": "auth/gcp",
+      "config": {
+        "role": "infrak8s_dev_nginx",
+        "type": "iam"
+      }
+    },
+    "sink": [
+      {
+        "type": "file",
+        "config": {
+          "path": "/home/vault/.vault-token"
+        }
+      }
+    ]
+  },
+  "exit_after_auth": false,
+  "pid_file": "/home/vault/.pid",
+  "vault": {
+    "address": "https://vault.infra.activision.com:8200"
+  },
+  "template": [
+    {
+      "destination": "/vault/secrets/db-creds",
+      "contents": "{{ with secret \"activision/certs/star_infra_activision_com\" }}{{ range $k, $v := .Data }}{{ $k }}: {{ $v }}\n{{ end }}{{ end }}",
+      "left_delimiter": "{{",
+      "right_delimiter": "}}"
+    }
+  ]
+}

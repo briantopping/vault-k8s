@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -94,6 +97,9 @@ type Agent struct {
 	// can be located.  This is used when we mount the service account to the
 	// Vault Agent container(s).
 	ServiceAccountPath string
+
+	//Google email address
+	ServiceAccountEmail string
 
 	// Status is the current injection status.  The only status considered is "injected",
 	// which prevents further mutations.  A user can patch this annotation to force a new
@@ -187,6 +193,9 @@ type Vault struct {
 	// Role is the name of the Vault role to use for authentication.
 	Role string
 
+	//email address of bound SA- cant figure out how to look it up for now
+	Email string
+
 	// TLSSecret is the name of the secret to be mounted to the Vault Agent container
 	// containing the TLS certificates required to communicate with Vault.
 	TLSSecret string
@@ -212,22 +221,23 @@ type VaultAgentCache struct {
 
 // New creates a new instance of Agent by parsing all the Kubernetes annotations.
 func New(pod *corev1.Pod, patches []*jsonpatch.JsonPatchOperation) (*Agent, error) {
-	saName, saPath := serviceaccount(pod)
+	saName, saPath, saEmail := serviceaccount(pod)
 
 	agent := &Agent{
-		Annotations:        pod.Annotations,
-		ConfigMapName:      pod.Annotations[AnnotationAgentConfigMap],
-		ImageName:          pod.Annotations[AnnotationAgentImage],
-		LimitsCPU:          pod.Annotations[AnnotationAgentLimitsCPU],
-		LimitsMem:          pod.Annotations[AnnotationAgentLimitsMem],
-		Namespace:          pod.Annotations[AnnotationAgentRequestNamespace],
-		Patches:            patches,
-		Pod:                pod,
-		RequestsCPU:        pod.Annotations[AnnotationAgentRequestsCPU],
-		RequestsMem:        pod.Annotations[AnnotationAgentRequestsMem],
-		ServiceAccountName: saName,
-		ServiceAccountPath: saPath,
-		Status:             pod.Annotations[AnnotationAgentStatus],
+		Annotations:         pod.Annotations,
+		ConfigMapName:       pod.Annotations[AnnotationAgentConfigMap],
+		ImageName:           pod.Annotations[AnnotationAgentImage],
+		LimitsCPU:           pod.Annotations[AnnotationAgentLimitsCPU],
+		LimitsMem:           pod.Annotations[AnnotationAgentLimitsMem],
+		Namespace:           pod.Annotations[AnnotationAgentRequestNamespace],
+		Patches:             patches,
+		Pod:                 pod,
+		RequestsCPU:         pod.Annotations[AnnotationAgentRequestsCPU],
+		RequestsMem:         pod.Annotations[AnnotationAgentRequestsMem],
+		ServiceAccountName:  saName,
+		ServiceAccountPath:  saPath,
+		ServiceAccountEmail: saEmail,
+		Status:              pod.Annotations[AnnotationAgentStatus],
 		Vault: Vault{
 			Address:          pod.Annotations[AnnotationVaultService],
 			AuthPath:         pod.Annotations[AnnotationVaultAuthPath],
@@ -242,6 +252,7 @@ func New(pod *corev1.Pod, patches []*jsonpatch.JsonPatchOperation) (*Agent, erro
 			Role:             pod.Annotations[AnnotationVaultRole],
 			TLSSecret:        pod.Annotations[AnnotationVaultTLSSecret],
 			TLSServerName:    pod.Annotations[AnnotationVaultTLSServerName],
+			Email:            pod.Annotations[AnnotationVaultEmail],
 		},
 	}
 
@@ -496,16 +507,39 @@ func (a *Agent) Validate() error {
 	return nil
 }
 
-func serviceaccount(pod *corev1.Pod) (string, string) {
-	var serviceAccountName, serviceAccountPath string
+func serviceaccount(pod *corev1.Pod) (string, string, string) {
+	var serviceAccountName, serviceAccountPath, saemail string
 	for _, container := range pod.Spec.Containers {
 		for _, volumes := range container.VolumeMounts {
+			fmt.Println(container)
 			if strings.Contains(volumes.MountPath, "serviceaccount") {
-				return volumes.Name, volumes.MountPath
+
+				//worthless for now
+
+				req, err := http.NewRequest("GET", "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email", nil)
+				if err != nil {
+					// handle err
+				}
+				req.Header.Set("Metadata-Flavor", "Google")
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					// handle err
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode == http.StatusOK {
+					bodyBytes, err := ioutil.ReadAll(resp.Body)
+					if err != nil {
+						log.Fatal(err)
+					}
+					email := string(bodyBytes)
+					return volumes.Name, volumes.MountPath, email
+				}
 			}
 		}
 	}
-	return serviceAccountName, serviceAccountPath
+	return serviceAccountName, serviceAccountPath, saemail
 }
 
 func (a *Agent) vaultCliFlags() []string {
